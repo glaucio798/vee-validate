@@ -169,7 +169,7 @@ export const ValidationObserver = (Vue as withObserverNode).extend({
         this.observers.splice(idx, 1);
       }
     },
-    async validate({ silent = false }: { silent?: boolean } = {}) {
+    async validateWithInfo({ silent = false }: { silent?: boolean } = {}) {
       const results = await Promise.all([
         ...values(this.refs)
           .filter((r: any) => !r.disabled)
@@ -177,7 +177,23 @@ export const ValidationObserver = (Vue as withObserverNode).extend({
         ...this.observers.filter((o: any) => !o.disabled).map((obs: any) => obs.validate({ silent }))
       ]);
 
-      return results.every(r => r);
+      const isValid = results.every(r => r);
+      const { errors, flags, fields } = computeObserverState.call(this);
+      this.errors = errors;
+      this.flags = flags;
+      this.fields = fields;
+
+      return {
+        errors,
+        flags,
+        fields,
+        isValid
+      };
+    },
+    async validate({ silent = false }: { silent?: boolean } = {}) {
+      const { isValid } = await this.validateWithInfo({ silent });
+
+      return isValid;
     },
     async handleSubmit(cb: Function) {
       const isValid = await this.validate();
@@ -227,6 +243,7 @@ function prepareSlotProps(vm: ObserverInstance) {
     errors: vm.errors,
     fields: vm.fields,
     validate: vm.validate,
+    validateWithInfo: vm.validateWithInfo,
     passes: vm.handleSubmit,
     handleSubmit: vm.handleSubmit,
     reset: vm.reset
@@ -243,7 +260,8 @@ function createObserverFlags() {
 }
 
 function computeObserverState(this: ObserverInstance) {
-  const vms = [...values(this.refs), ...this.observers];
+  const vms = [...values(this.refs), ...this.observers.filter(o => !o.disabled)];
+
   let errors: ObserverErrors = {};
   const flags: ValidationFlags = createObserverFlags();
   let fields: Record<string, ObserverField> = {};
